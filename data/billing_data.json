@@ -1,0 +1,108 @@
+{
+  "customers": {
+    "C001": {
+      "customer_id": "C001",
+      "name": "Alice Johnson",
+      "address": "42 Maple Street, Springfield",
+      "billing_period": "March 2025",
+      "usage": {
+        "current_kwh": 850,
+        "previous_kwh": 620,
+        "unit": "kWh",
+        "peak_hours_kwh": 210,
+        "off_peak_hours_kwh": 640
+      },
+      "rate": {
+        "base_rate_per_kwh": 0.12,
+        "peak_rate_per_kwh": 0.18,
+        "tax_rate_percent": 8.0
+      },
+      "charges": {
+        "energy_charge": 102.00,
+        "peak_surcharge": 18.00,
+        "subtotal": 120.00,
+        "tax": 9.60,
+        "total": 129.60,
+        "currency": "USD"
+      }
+    },
+    "C002": {
+      "customer_id": "C002",
+      "name": "Bob Martinez",
+      "address": "17 Oak Avenue, Shelbyville",
+      "billing_period": "March 2025",
+      "usage": {
+        "current_kwh": 430,
+        "previous_kwh": 410,
+        "unit": "kWh",
+        "peak_hours_kwh": 80,
+        "off_peak_hours_kwh": 350
+      },
+      "rate": {
+        "base_rate_per_kwh": 0.12,
+        "peak_rate_per_kwh": 0.18,
+        "tax_rate_percent": 8.0
+      },
+      "charges": {
+        "energy_charge": 51.60,
+        "peak_surcharge": 6.40,
+        "subtotal": 58.00,
+        "tax": 4.64,
+        "total": 62.64,
+        "currency": "USD"
+      }
+    },
+    "C003": {
+      "customer_id": "C003",
+      "name": "Carol Nguyen",
+      "address": "88 Pine Road, Capital City",
+      "billing_period": "March 2025",
+      "usage": {
+        "current_kwh": 1240,
+        "previous_kwh": 890,
+        "unit": "kWh",
+        "peak_hours_kwh": 460,
+        "off_peak_hours_kwh": 780
+      },
+      "rate": {
+        "base_rate_per_kwh": 0.12,
+        "peak_rate_per_kwh": 0.18,
+        "tax_rate_percent": 8.0
+      },
+      "charges": {
+        "energy_charge": 148.80,
+        "peak_surcharge": 36.80,
+        "subtotal": 185.60,
+        "tax": 14.85,
+        "total": 200.45,
+        "currency": "USD"
+      }
+    },
+    "C004": {
+      "customer_id": "C004",
+      "name": "David Chen",
+      "address": "5 Birch Lane, Ogdenville",
+      "billing_period": "March 2025",
+      "usage": {
+        "current_kwh": 310,
+        "previous_kwh": 325,
+        "unit": "kWh",
+        "peak_hours_kwh": 55,
+        "off_peak_hours_kwh": 255
+      },
+      "rate": {
+        "base_rate_per_kwh": 0.12,
+        "peak_rate_per_kwh": 0.18,
+        "tax_rate_percent": 8.0
+      },
+      "charges": {
+        "energy_charge": 37.20,
+        "peak_surcharge": 4.40,
+        "subtotal": 41.60,
+        "tax": 3.33,
+        "total": 44.93,
+        "currency": "USD"
+      }
+    }
+  }
+}

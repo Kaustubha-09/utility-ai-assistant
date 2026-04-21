@@ -1,0 +1,20 @@
+SECTION: How Your Bill Is Calculated
+Your electricity bill is calculated based on the total kilowatt-hours (kWh) you consumed during the billing period. The base rate is $0.12 per kWh for all usage. This covers standard energy delivery, grid maintenance, and infrastructure costs. In addition to the base rate, a separate tax of 8% is applied to your subtotal before arriving at the final amount due. You will also see an itemized breakdown showing energy charges and any applicable surcharges.
+
+SECTION: What Is Peak Pricing
+Peak pricing applies to electricity consumed during high-demand hours: typically weekdays between 4 PM and 9 PM. During these peak hours, the rate increases to $0.18 per kWh instead of the standard $0.12 rate. This time-of-use pricing model helps balance demand on the grid. Using heavy appliances like washers, dryers, dishwashers, and electric ovens during off-peak hours (before 4 PM or after 9 PM, and all day on weekends) will reduce your peak surcharge significantly.
+
+SECTION: Why Is My Bill Higher Than Last Month
+Several common reasons can explain a higher electricity bill compared to the previous billing period. First, seasonal changes: colder winters mean more heating, and hotter summers mean more air conditioning, both of which increase energy consumption significantly. Second, changes in home occupancy, such as family members staying home more frequently, will naturally increase usage. Third, new appliances or devices left on standby can silently consume power. Fourth, if your usage during peak hours has increased, you will see a higher peak surcharge even if total kWh usage is similar. Fifth, rate adjustments by the utility provider can affect your bill without any change in consumption.
+
+SECTION: How to Reduce Your Energy Bill
+To lower your monthly electricity costs, consider shifting energy-intensive tasks to off-peak hours. Run your dishwasher and laundry at night or on weekends. Set your thermostat a few degrees lower in winter and a few degrees higher in summer. Replace old incandescent bulbs with LED lights, which use up to 75% less energy. Unplug devices when not in use to eliminate phantom loads. Consider a smart thermostat that automatically adjusts temperature based on occupancy. Adding insulation to your home also helps maintain temperature without as much energy.
+
+SECTION: Understanding Energy Charges vs Surcharges
+Your bill contains two main usage-based charges. The energy charge is the base cost of all electricity consumed, calculated at $0.12 per kWh for your total usage. The peak surcharge is an additional charge applied only to the kWh consumed during peak hours, calculated as the difference between the peak rate ($0.18) and the base rate ($0.12), which equals $0.06 per peak-hour kWh. So if you used 200 kWh during peak hours, your peak surcharge would be 200 x $0.06 = $12.00. These two charges combined form your subtotal, and then tax is applied on top.
+
+SECTION: Billing Disputes and Credits
+If you believe there is an error in your bill, you have the right to dispute it within 30 days of the billing date. Contact customer support with your customer ID and a clear description of the discrepancy. Common dispute reasons include meter reading errors, duplicate charges, or incorrect rate application. If a credit is owed, it will appear on your next statement. Do not withhold payment during a dispute unless explicitly instructed by a representative, as this may result in a late fee.
+
+SECTION: Payment Options and Due Dates
+Bills are due 21 days after the statement date. You can pay online through the customer portal, by phone, by mail, or in person at a payment center. AutoPay enrollment ensures your bill is paid on time and may qualify you for a small discount. If you anticipate difficulty paying, contact us before the due date to discuss payment arrangements. A late fee of 1.5% of the overdue amount is applied if payment is not received by the due date.
