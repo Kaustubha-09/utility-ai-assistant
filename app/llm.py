@@ -7,16 +7,17 @@ _MODEL = "claude-sonnet-4-6"
 
 _SYSTEM_PROMPT = """You are a helpful utility billing assistant for a fictional electricity company.
 
-Answer customer questions using ONLY the context provided in each message:
-- [TOOL DATA]: Structured account data from the billing system (may be absent)
-- [POLICY DOCS]: Relevant excerpts from policy documentation (may be absent)
+You help customers with their electricity bills, usage, charges, and billing policies.
+
+When context is provided, use it. When it is absent (e.g. greetings, small talk, capability questions), respond naturally and conversationally.
 
 Rules:
-1. Base your answer ONLY on the provided context. Do not invent numbers, rates, or policies.
-2. If context is insufficient, say: "I don't have enough information to answer that question."
-3. Use plain, friendly language. Quote exact dollar and kWh figures from the data.
-4. Keep answers to 2–4 sentences unless a detailed breakdown is requested.
-5. End every response with exactly one of these on its own line:
+1. For billing questions: base your answer ONLY on provided [TOOL DATA] and [POLICY DOCS]. Do not invent numbers, rates, or policies.
+2. For greetings or "what can you do" questions: respond warmly and list what you can help with (bills, usage comparison, charge breakdowns, peak pricing, tips to reduce bills).
+3. If a billing question has no relevant context: say you don't have that information and suggest they try one of the available options.
+4. Use plain, friendly language. Quote exact dollar and kWh figures from the data.
+5. Keep answers concise unless a detailed breakdown is requested.
+6. End every response with exactly one of these on its own line:
    CONFIDENCE: HIGH   — direct data fully answers the question
    CONFIDENCE: MEDIUM — partial data or inference from policy required
    CONFIDENCE: LOW    — context is insufficient or only loosely related
@@ -38,9 +39,9 @@ def _mock_generate(tool_data: Optional[dict], rag_docs: Optional[list]) -> dict:
             bd = data["breakdown"]
             answer = (
                 f"Hi {data['name']}! For {data['billing_period']}, your total bill is "
-                f"**${bd['total_usd']:.2f}**. "
-                f"That breaks down as ${bd['energy_charge_usd']:.2f} in energy charges, "
-                f"${bd['peak_surcharge_usd']:.2f} peak surcharge, and ${bd['tax_usd']:.2f} tax. "
+                f"**\\${bd['total_usd']:.2f}**. "
+                f"That breaks down as \\${bd['energy_charge_usd']:.2f} in energy charges, "
+                f"\\${bd['peak_surcharge_usd']:.2f} peak surcharge, and \\${bd['tax_usd']:.2f} tax. "
                 f"Total usage was {data['total_usage_kwh']} kWh."
             )
             return {"answer": answer, "confidence": "HIGH"}
@@ -64,10 +65,13 @@ def _mock_generate(tool_data: Optional[dict], rag_docs: Optional[list]) -> dict:
             answer = (
                 f"Hi {data['name']}! Here's your charge breakdown for {data['billing_period']}. "
                 f"You used **{ub['total_kwh']} kWh** total — {ub['peak_hours_kwh']} kWh during peak hours "
-                f"and {ub['off_peak_hours_kwh']} kWh off-peak. "
-                f"Base rate: ${r['base_rate_usd_per_kwh']}/kWh · Peak surcharge rate: ${r['peak_surcharge_rate']}/kWh. "
-                f"Energy charge: ${cb['energy_charge_usd']:.2f} + Peak surcharge: ${cb['peak_surcharge_usd']:.2f} "
-                f"+ Tax: ${cb['tax_usd']:.2f} = **Total: ${cb['total_usd']:.2f}**."
+                f"and {ub['off_peak_hours_kwh']} kWh off-peak.\n\n"
+                f"- Base rate: \\${r['base_rate_usd_per_kwh']}/kWh\n"
+                f"- Peak surcharge rate: \\${r['peak_surcharge_rate']}/kWh\n"
+                f"- Energy charge: \\${cb['energy_charge_usd']:.2f}\n"
+                f"- Peak surcharge: \\${cb['peak_surcharge_usd']:.2f}\n"
+                f"- Tax: \\${cb['tax_usd']:.2f}\n"
+                f"- **Total: \\${cb['total_usd']:.2f}**"
             )
             return {"answer": answer, "confidence": "HIGH"}
 
@@ -90,8 +94,16 @@ def _mock_generate(tool_data: Optional[dict], rag_docs: Optional[list]) -> dict:
         return {"answer": answer, "confidence": confidence}
 
     return {
-        "answer": "I don't have enough information to answer that question.",
-        "confidence": "LOW",
+        "answer": (
+            "Hi there! I'm your utility billing assistant. Here's what I can help you with:\n\n"
+            "- **Bill summary** — your total due and breakdown\n"
+            "- **Usage comparison** — current vs. last month\n"
+            "- **Charge breakdown** — peak/off-peak split, rates, tax\n"
+            "- **Peak pricing** — when it applies and how to avoid it\n"
+            "- **Tips to reduce your bill**\n\n"
+            "Select a customer from the sidebar and ask me anything, or try one of the example buttons."
+        ),
+        "confidence": "HIGH",
     }
 
 
@@ -132,6 +144,7 @@ def generate_answer(
     query: str,
     tool_data: Optional[dict] = None,
     rag_docs: Optional[list] = None,
+    history: Optional[list] = None,  # [{"role": "user"|"assistant", "content": str}, ...]
 ) -> dict:
     """Return { answer, confidence }. Uses mock templates if no API key is set."""
     if not _API_KEY:
@@ -140,18 +153,25 @@ def generate_answer(
     import anthropic
     client = anthropic.Anthropic(api_key=_API_KEY)
 
-    user_message = (
+    # Current turn embeds the fresh tool/RAG context
+    current_msg = (
         f"Customer question: {query}\n\n"
         f"Context:\n{_build_context(tool_data, rag_docs)}\n\n"
-        "Answer based strictly on the context above."
+        "Answer using the context above and our conversation so far."
     )
 
-    response = client.messages.create(
-        model=_MODEL,
-        max_tokens=512,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
+    # Keep the last 6 messages (3 turns) to avoid hitting token limits
+    prior = [{"role": m["role"], "content": m["content"]} for m in (history or [])[-6:]]
+    messages = prior + [{"role": "user", "content": current_msg}]
 
-    answer, confidence = _parse_confidence(response.content[0].text)
-    return {"answer": answer, "confidence": confidence}
+    try:
+        response = client.messages.create(
+            model=_MODEL,
+            max_tokens=512,
+            system=_SYSTEM_PROMPT,
+            messages=messages,
+        )
+        answer, confidence = _parse_confidence(response.content[0].text)
+        return {"answer": answer, "confidence": confidence}
+    except anthropic.APIError:
+        return _mock_generate(tool_data, rag_docs)

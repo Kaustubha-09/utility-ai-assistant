@@ -1,84 +1,149 @@
 """
 Streamlit chat UI for the Utility AI Assistant.
-
 Run with:  streamlit run ui.py
 """
 
-import sys
-import os
+import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
+import re
 import streamlit as st
 from app.router import route_query
 from app.tools import TOOL_REGISTRY
 from app.rag import retrieve_docs
 from app.llm import generate_answer
 
+
+def _md(text: str) -> None:
+    """Render markdown with dollar signs escaped to prevent Streamlit LaTeX mode."""
+    st.markdown(re.sub(r'(?<!\\)\$', r'\\$', text))
+
 # ── Page config ───────────────────────────────────────────────────────────────
 
-st.set_page_config(
-    page_title="Utility AI Assistant",
-    page_icon="⚡",
-    layout="centered",
-)
-
-# ── Styling ───────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Utility AI Assistant", page_icon="⚡", layout="centered")
 
 st.markdown("""
 <style>
 .confidence-HIGH  { background:#d4edda; color:#155724; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:600; }
 .confidence-MEDIUM{ background:#fff3cd; color:#856404; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:600; }
 .confidence-LOW   { background:#f8d7da; color:#721c24; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:600; }
-.source-tag       { background:#e2e3e5; color:#383d41; padding:3px 10px; border-radius:12px; font-size:0.8rem; margin-right:6px; }
-.meta-row         { margin-top:8px; display:flex; align-items:center; gap:6px; }
+.source-tag       { background:#e2e3e5; color:#383d41; padding:3px 10px; border-radius:12px; font-size:0.8rem; }
+.meta-row         { margin-top:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ────────────────────────────────────────────────────────────────────
+# ── Session state init ────────────────────────────────────────────────────────
 
-st.title("⚡ Utility AI Assistant")
-st.caption("Ask about your electricity bill, usage, charges, or billing policies.")
+if "messages" not in st.session_state:
+    st.session_state.messages = {}   # { customer_id: [msg, ...] }
+if "pending" not in st.session_state:
+    st.session_state.pending = None
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.header("Example queries")
+    st.header("⚡ Utility AI Assistant")
 
+    st.subheader("Customer")
+    customer_id = st.selectbox(
+        "Select customer",
+        ["C001 — Alice Johnson", "C002 — Bob Martinez", "C003 — Carol Nguyen", "C004 — David Chen"],
+        label_visibility="collapsed",
+    ).split(" ")[0]  # extract just "C001" etc.
+
+    st.divider()
+
+    st.subheader("Try an example")
     examples = [
-        ("📄 Bill summary",       "What is my total bill?",                        "C001"),
-        ("📊 Compare usage",      "How does my usage compare to last month?",       "C003"),
-        ("🔍 Explain charges",    "Break down my charges for me",                   "C002"),
-        ("⚡ Peak pricing",       "What is peak pricing and when does it apply?",   ""),
-        ("💡 Reduce bill",        "How can I reduce my electricity bill?",          ""),
-        ("❓ Mixed question",     "Why is my bill higher than last month?",         "C003"),
+        ("📄 Bill summary",     "What is my total bill?",                      True),
+        ("📊 Compare usage",    "How does my usage compare to last month?",     True),
+        ("🔍 Explain charges",  "Break down my charges",                        True),
+        ("⚡ Peak pricing",     "What is peak pricing and when does it apply?", False),
+        ("💡 Reduce my bill",   "How can I reduce my electricity bill?",        False),
+        ("❓ Why higher bill",  "Why is my bill higher than last month?",       True),
     ]
 
-    for label, query, cid in examples:
+    for label, query_text, needs_cid in examples:
         if st.button(label, use_container_width=True):
-            st.session_state["prefill_query"] = query
-            st.session_state["prefill_cid"] = cid
+            # Store as pending — will be processed on next rerun automatically
+            st.session_state.pending = {
+                "query": query_text,
+                "customer_id": customer_id if needs_cid else None,
+            }
+            st.rerun()
 
     st.divider()
-    st.markdown("**Mock customers**")
-    st.markdown("- `C001` Alice Johnson\n- `C002` Bob Martinez\n- `C003` Carol Nguyen\n- `C004` David Chen")
+    st.caption("**Routing logic**")
+    st.caption("Bill / usage → tool\nWhy / explain → RAG\nBoth present → tool + RAG")
 
-    st.divider()
-    st.markdown("**How routing works**")
+# ── Header ────────────────────────────────────────────────────────────────────
+
+st.title("⚡ Utility AI Assistant")
+st.caption(f"Active customer: **{customer_id}**  ·  Type a question or pick an example from the sidebar.")
+
+# Shorthand for the current customer's message list
+chat = st.session_state.messages.setdefault(customer_id, [])
+
+# ── Core processing function ──────────────────────────────────────────────────
+
+def process_query(query: str, cid: str | None, history: list = None):
+    """Run the full pipeline and render the assistant response."""
+    route = route_query(query)
+    mode = route["mode"]
+    resolved_cid = cid or route["customer_id"]
+
+    tool_data = None
+    rag_docs = None
+    sources = []
+
+    if mode in ("tool", "both"):
+        tool_fn = TOOL_REGISTRY.get(route.get("tool_name", "get_bill"))
+        if tool_fn and resolved_cid:
+            tool_data = tool_fn(resolved_cid)
+            sources.append("tool")
+        else:
+            mode = "rag"
+
+    if mode in ("rag", "both"):
+        rag_docs = retrieve_docs(query, top_k=2)
+        if rag_docs:
+            sources.append("rag")
+
+    result = generate_answer(query=query, tool_data=tool_data, rag_docs=rag_docs, history=history)
+
+    answer     = result["answer"]
+    confidence = result["confidence"]
+    source     = "+".join(sources) if sources else "none"
+
+    # Render
+    _md(answer)
     st.markdown(
-        "- Bill / usage keywords → **tool**\n"
-        "- Why / explain / policy → **RAG**\n"
-        "- Both present → **tool + RAG**"
+        f'<div class="meta-row">'
+        f'<span class="source-tag">source: {source}</span>'
+        f'<span class="confidence-{confidence}">{confidence}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
     )
+
+    if tool_data and tool_data.get("status") == "ok":
+        with st.expander("Tool data"):
+            st.json(tool_data["data"])
+
+    if rag_docs:
+        with st.expander(f"{len(rag_docs)} policy section(s) retrieved"):
+            for doc in rag_docs:
+                st.markdown(f"**{doc['title']}** · score: {doc['score']}")
+                snippet = doc["content"][:300] + ("…" if len(doc["content"]) > 300 else "")
+                st.caption(re.sub(r'(?<!\\)\$', r'\\$', snippet))
+
+    return {"role": "assistant", "content": answer, "source": source, "confidence": confidence}
 
 # ── Chat history ──────────────────────────────────────────────────────────────
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-for msg in st.session_state.messages:
+for msg in chat:
     with st.chat_message(msg["role"]):
         if msg["role"] == "assistant":
-            st.markdown(msg["content"])
+            _md(msg["content"])
             st.markdown(
                 f'<div class="meta-row">'
                 f'<span class="source-tag">source: {msg["source"]}</span>'
@@ -89,96 +154,40 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["content"])
 
-# ── Input form ────────────────────────────────────────────────────────────────
+# ── Handle sidebar button click (auto-submit) ─────────────────────────────────
 
-prefill_query = st.session_state.pop("prefill_query", "")
-prefill_cid   = st.session_state.pop("prefill_cid", "")
+if st.session_state.pending:
+    pending = st.session_state.pending
+    st.session_state.pending = None
 
-with st.form("query_form", clear_on_submit=True):
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        query = st.text_input(
-            "Your question",
-            value=prefill_query,
-            placeholder="e.g. Why is my bill higher this month?",
-            label_visibility="collapsed",
-        )
-    with col2:
-        cid = st.text_input(
-            "Customer ID",
-            value=prefill_cid,
-            placeholder="C001",
-            label_visibility="collapsed",
-        )
-    submitted = st.form_submit_button("Ask ⚡", use_container_width=True)
-
-# ── Process query ─────────────────────────────────────────────────────────────
-
-if submitted and query.strip():
-    # Show user message
-    st.session_state.messages.append({"role": "user", "content": query})
+    cid_for_pending = pending["customer_id"] or customer_id
+    pending_chat = st.session_state.messages.setdefault(cid_for_pending, [])
+    history = [{"role": m["role"], "content": m["content"]} for m in pending_chat]
+    pending_chat.append({"role": "user", "content": pending["query"]})
     with st.chat_message("user"):
-        st.markdown(query)
+        st.markdown(pending["query"])
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
-            # Route
-            route = route_query(query)
-            mode = route["mode"]
-            customer_id = cid.strip().upper() or route["customer_id"]
+            response = process_query(pending["query"], pending["customer_id"], history=history)
+    pending_chat.append(response)
+    st.rerun()
 
-            tool_data = None
-            rag_docs   = None
-            sources    = []
+# ── Chat input (free typing) ──────────────────────────────────────────────────
 
-            if mode in ("tool", "both"):
-                tool_fn = TOOL_REGISTRY.get(route.get("tool_name", "get_bill"))
-                if tool_fn and customer_id:
-                    tool_data = tool_fn(customer_id)
-                    sources.append("tool")
-                else:
-                    mode = "rag"
+if prompt := st.chat_input("Ask about your bill…"):
+    history = [{"role": m["role"], "content": m["content"]} for m in chat]
+    chat.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-            if mode in ("rag", "both"):
-                rag_docs = retrieve_docs(query, top_k=2)
-                if rag_docs:
-                    sources.append("rag")
-
-            result = generate_answer(query=query, tool_data=tool_data, rag_docs=rag_docs)
-
-        answer     = result["answer"]
-        confidence = result["confidence"]
-        source     = "+".join(sources) if sources else "none"
-
-        st.markdown(answer)
-        st.markdown(
-            f'<div class="meta-row">'
-            f'<span class="source-tag">source: {source}</span>'
-            f'<span class="confidence-{confidence}">{confidence}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Show tool data and RAG chunks in expanders
-        if tool_data and tool_data.get("status") == "ok":
-            with st.expander("Tool data retrieved"):
-                st.json(tool_data["data"])
-
-        if rag_docs:
-            with st.expander(f"{len(rag_docs)} policy section(s) retrieved"):
-                for doc in rag_docs:
-                    st.markdown(f"**{doc['title']}** (score: {doc['score']})")
-                    st.caption(doc["content"][:300] + ("…" if len(doc["content"]) > 300 else ""))
-
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer,
-        "source": source,
-        "confidence": confidence,
-    })
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking…"):
+            response = process_query(prompt, customer_id, history=history)
+    chat.append(response)
     st.rerun()
 
 # ── Empty state ───────────────────────────────────────────────────────────────
 
-if not st.session_state.messages:
-    st.info("Type a question above or pick an example from the sidebar to get started.")
+if not chat:
+    st.info("Select a customer in the sidebar, then type a question or click an example.")
