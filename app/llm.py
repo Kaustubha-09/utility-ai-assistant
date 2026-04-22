@@ -1,9 +1,12 @@
 import json
 import os
 from typing import Optional
+from dotenv import load_dotenv
 
-_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-_MODEL = "claude-sonnet-4-6"
+load_dotenv()
+
+_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+_MODEL = "gemini-2.5-flash"
 
 _SYSTEM_PROMPT = """You are a helpful utility billing assistant for a fictional electricity company.
 
@@ -75,7 +78,6 @@ def _mock_generate(tool_data: Optional[dict], rag_docs: Optional[list]) -> dict:
             )
             return {"answer": answer, "confidence": "HIGH"}
 
-        # Unknown tool — fall through to RAG
         data_summary = json.dumps(data, indent=2)
         return {"answer": f"Here is your account data:\n```\n{data_summary}\n```", "confidence": "MEDIUM"}
 
@@ -84,7 +86,6 @@ def _mock_generate(tool_data: Optional[dict], rag_docs: Optional[list]) -> dict:
 
     if rag_docs:
         top = rag_docs[0]
-        # Return the first two sentences of the top-ranked section
         sentences = [s.strip() for s in top["content"].replace("\n", " ").split(". ") if s.strip()]
         snippet = ". ".join(sentences[:2]) + ("." if sentences else "")
         answer = f"**{top['title']}** — {snippet}"
@@ -107,7 +108,7 @@ def _mock_generate(tool_data: Optional[dict], rag_docs: Optional[list]) -> dict:
     }
 
 
-# ── Real LLM mode ─────────────────────────────────────────────────────────────
+# ── Gemini LLM mode ───────────────────────────────────────────────────────────
 
 def _build_context(tool_data: Optional[dict], rag_docs: Optional[list]) -> str:
     parts = []
@@ -150,28 +151,27 @@ def generate_answer(
     if not _API_KEY:
         return _mock_generate(tool_data, rag_docs)
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=_API_KEY)
+    import google.generativeai as genai
 
-    # Current turn embeds the fresh tool/RAG context
+    genai.configure(api_key=_API_KEY)
+    model = genai.GenerativeModel(model_name=_MODEL, system_instruction=_SYSTEM_PROMPT)
+
+    # Gemini uses "model" instead of "assistant" for role names
+    gemini_history = []
+    for msg in (history or [])[-6:]:
+        role = "model" if msg["role"] == "assistant" else "user"
+        gemini_history.append({"role": role, "parts": [msg["content"]]})
+
     current_msg = (
         f"Customer question: {query}\n\n"
         f"Context:\n{_build_context(tool_data, rag_docs)}\n\n"
         "Answer using the context above and our conversation so far."
     )
 
-    # Keep the last 6 messages (3 turns) to avoid hitting token limits
-    prior = [{"role": m["role"], "content": m["content"]} for m in (history or [])[-6:]]
-    messages = prior + [{"role": "user", "content": current_msg}]
-
     try:
-        response = client.messages.create(
-            model=_MODEL,
-            max_tokens=512,
-            system=_SYSTEM_PROMPT,
-            messages=messages,
-        )
-        answer, confidence = _parse_confidence(response.content[0].text)
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(current_msg)
+        answer, confidence = _parse_confidence(response.text)
         return {"answer": answer, "confidence": confidence}
-    except anthropic.APIError:
+    except Exception:
         return _mock_generate(tool_data, rag_docs)
