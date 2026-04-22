@@ -4,6 +4,8 @@ Run with:  streamlit run ui.py
 """
 
 import sys, os
+os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GLOG_minloglevel"] = "2"
 sys.path.insert(0, os.path.dirname(__file__))
 
 import re
