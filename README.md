@@ -1,6 +1,13 @@
 # Utility AI Assistant
 
-A prototype AI system for electricity billing support, demonstrating four patterns common in production AI systems:
+> A prototype AI system for electricity billing support, demonstrating four production-grade patterns in one small codebase: MCP-style tool calling, RAG over policy docs, keyword-based intent routing, and grounded LLM synthesis with explicit confidence scoring.
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit)](https://streamlit.io)
+[![Claude](https://img.shields.io/badge/LLM-Claude%20Sonnet%204.6-D97757)](https://www.anthropic.com)
+
+A naive LLM given *"Why is my bill higher than last month?"* would guess at numbers and policies. This system separates that question into two parts — *what are my actual numbers?* (tool) and *what explains them?* (RAG) — and only sends the LLM grounded context to synthesize from.
 
 | Pattern | Implementation |
 |---|---|
@@ -11,11 +18,28 @@ A prototype AI system for electricity billing support, demonstrating four patter
 
 ---
 
-## How It Works
+## Screenshots
 
-A naive LLM given *"Why is my bill higher than last month?"* would guess at numbers and policies. This system separates that question into two parts — *what are my actual numbers?* (tool) and *what explains them?* (RAG) — and only sends the LLM grounded context to synthesise from.
+Drop the canonical three into [`Screenshots/`](Screenshots/) — `01_chat_ui.png` (Streamlit chat), `02_tool_expansion.png` (tool payload expanded), `03_swagger.png` (FastAPI `/docs`).
 
-### Request Flow
+---
+
+## Features
+
+- **Two surfaces, one core** — Streamlit chat UI and FastAPI REST endpoint share the same router, tools, RAG index, and LLM module.
+- **Three MCP-style tools** — `get_bill`, `compare_usage`, `explain_charges`, all reading from `data/billing_data.json` and returning structured JSON.
+- **TF-IDF RAG over policy docs** — chunks `data/docs.txt` by `SECTION:` headers, builds the index at startup, retrieves top-k at query time. No embedding API required.
+- **Keyword router** — scores each query against tool keywords + RAG keywords; falls back to `rag` rather than guessing tool calls.
+- **Customer ID extraction** — regex pulls `C001`-style IDs out of free text, or accepts an explicit `customer_id` field.
+- **Confidence-scored answers** — LLM appends `CONFIDENCE: HIGH/MEDIUM/LOW`, parsed into a separate field. The Streamlit UI renders these as color-coded badges.
+- **Grounded synthesis** — system prompt forbids inventing numbers or policies; the LLM only sees tool output + retrieved RAG sections.
+- **Debug mode** — `DEBUG=true` adds route decisions, tool calls, and RAG chunk counts to every response.
+
+---
+
+## Architecture
+
+### Request flow
 
 ```
 POST /query  {"query": "Why is my bill higher? C003"}
@@ -52,20 +76,36 @@ POST /query  {"query": "Why is my bill higher? C003"}
 
 ### Components
 
-**`router.py`** — Scores the query against two keyword sets and returns `mode: tool | rag | both`. Also extracts a customer ID with a regex. When nothing matches, defaults to `rag` — safer than hallucinating a tool call.
+| File | Responsibility |
+|---|---|
+| `app/router.py` | Score query against keyword sets, return `mode: tool / rag / both`, extract customer ID. Defaults to `rag` on no match. |
+| `app/tools.py` | Three MCP-style functions reading `data/billing_data.json`: `get_bill`, `compare_usage`, `explain_charges` |
+| `app/rag.py` | Chunk `data/docs.txt` by `SECTION:` headers, build TF-IDF index, retrieve top-k by cosine similarity |
+| `app/llm.py` | Assemble context block from tool output + RAG sections, call Claude Sonnet 4.6 with grounding rules, parse confidence |
+| `app/main.py` | FastAPI app — wires router → tools → rag → llm, exposes `POST /query` |
+| `ui.py` | Streamlit chat UI — sidebar example queries, per-customer session state, color-coded confidence badges, expandable tool / RAG data |
 
-**`tools.py`** — Three MCP-style functions that read from `billing_data.json` and return structured JSON. The LLM never touches raw data; it only sees the tool's output.
-- `get_bill(customer_id)` — total due, energy charge, tax
-- `compare_usage(customer_id)` — delta, % change, trend label
-- `explain_charges(customer_id)` — peak/off-peak split, rates applied, itemised math
+### Project structure
 
-**`rag.py`** — Chunks `docs.txt` by `SECTION:` headers, builds a TF-IDF index at startup, and retrieves the top-k sections by cosine similarity at query time. No embedding API needed.
+```
+utility-ai-assistant/
+├── app/
+│   ├── __init__.py
+│   ├── main.py              FastAPI app
+│   ├── router.py            Intent classification + ID extraction
+│   ├── tools.py             get_bill · compare_usage · explain_charges
+│   ├── rag.py               TF-IDF index over policy docs
+│   └── llm.py               Claude Sonnet 4.6 grounded synthesis
+├── data/
+│   ├── billing_data.json    Mock customers C001–C004
+│   └── docs.txt             7 policy sections
+├── Screenshots/             UI captures referenced from this README
+├── ui.py                    Streamlit chat UI
+├── requirements.txt
+└── README.md
+```
 
-**`llm.py`** — Assembles a context block from tool output and retrieved docs, then calls Claude Sonnet 4.6. The system prompt enforces grounding (no invented numbers or policies) and instructs the model to append `CONFIDENCE: HIGH/MEDIUM/LOW` which is parsed out as a separate field.
-
-**`main.py`** — FastAPI app that wires everything together. The `source` field in the response tells you exactly where the answer came from: `"tool"`, `"rag"`, or `"tool+rag"`.
-
-### Confidence Levels
+### Confidence levels
 
 | Level | Meaning |
 |---|---|
@@ -75,7 +115,23 @@ POST /query  {"query": "Why is my bill higher? C003"}
 
 ---
 
-## Setup
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| API | FastAPI 0.115 |
+| UI | Streamlit 1.41 |
+| LLM | Claude Sonnet 4.6 via the Anthropic API |
+| RAG | scikit-learn TF-IDF (no embedding API) |
+| Validation | Pydantic 2.10 |
+| Env | python-dotenv |
+| Numerics | numpy 1.26 |
+
+Note: `requirements.txt` pins `google-generativeai` from an earlier Gemini build; the production path uses `anthropic` and Claude Sonnet 4.6 via `llm.py`. Remove the Gemini pin once you confirm it's not imported anywhere.
+
+---
+
+## Getting Started
 
 ```bash
 cd ~/Desktop/utility-ai-assistant
@@ -89,17 +145,29 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 # or copy .env.example → .env and fill in the key
 ```
 
-**Chat UI (Streamlit)**
+### Chat UI (Streamlit)
+
 ```bash
 streamlit run ui.py
 ```
+
 Opens at `http://localhost:8501` — chat interface with sidebar examples, color-coded confidence badges, and expandable tool/RAG data.
 
-**REST API (FastAPI)**
+### REST API (FastAPI)
+
 ```bash
 uvicorn app.main:app --reload
 ```
-API at `http://127.0.0.1:8000` · Swagger docs at `/docs`
+
+API at `http://127.0.0.1:8000` · Swagger docs at `/docs`.
+
+### Debug mode
+
+```bash
+DEBUG=true uvicorn app.main:app --reload
+```
+
+Adds a `"debug"` field to every response showing the route decision, tool called, and number of RAG chunks retrieved.
 
 ---
 
@@ -119,11 +187,9 @@ API at `http://127.0.0.1:8000` · Swagger docs at `/docs`
 }
 ```
 
-`customer_id` can be included in the query text (e.g. `"for C003"`) or passed explicitly as `"customer_id": "C003"`.
+`customer_id` can be included in the query text (`"for C003"`) or passed explicitly as `"customer_id": "C003"`.
 
----
-
-## Example Queries
+### Example queries
 
 ```bash
 BASE="http://127.0.0.1:8000/query"
@@ -153,18 +219,16 @@ curl -s -X POST $BASE -H "Content-Type: application/json" \
   -d '{"query": "Why is my bill higher than last month for C003?"}' | python3 -m json.tool
 ```
 
-## Debug Mode
-
-```bash
-DEBUG=true uvicorn app.main:app --reload
-```
-
-Adds a `"debug"` field to every response showing the route decision, tool called, and number of RAG chunks retrieved.
-
 ---
 
 ## Mock Data
 
-**Customers** (in `data/billing_data.json`): C001 Alice, C002 Bob, C003 Carol, C004 David — each with current/previous usage, peak/off-peak split, and itemised charges.
+**Customers** (in `data/billing_data.json`): C001 Alice, C002 Bob, C003 Carol, C004 David — each with current/previous usage, peak/off-peak split, and itemized charges.
 
 **Policy docs** (in `data/docs.txt`): 7 sections — bill calculation, peak pricing, reasons for high bills, how to reduce usage, charge breakdown explained, dispute process, payment options.
+
+---
+
+## License
+
+Prototype project — no production license yet.
