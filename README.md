@@ -20,7 +20,11 @@ A naive LLM given *"Why is my bill higher than last month?"* would guess at numb
 
 ## Screenshots
 
-Drop the canonical three into [`Screenshots/`](Screenshots/) — `01_chat_ui.png` (Streamlit chat), `02_tool_expansion.png` (tool payload expanded), `03_swagger.png` (FastAPI `/docs`).
+| Empty state — sidebar + customer picker | Tool + RAG response — sourced & confidence-labeled |
+|:-:|:-:|
+| <img src="Screenshots/01_empty_state.png" width="430" /> | <img src="Screenshots/02_tool_rag_response.png" width="430" /> |
+
+Right shot shows the full request loop: question → routed through `tool+rag` → grounded LLM answer (`"Your total bill for the March 2025 billing period is $129.60."`) → **HIGH** confidence badge. The source tag and confidence label are first-class UI elements, not afterthoughts.
 
 ---
 
