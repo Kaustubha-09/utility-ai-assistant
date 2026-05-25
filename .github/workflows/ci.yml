@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Python compile + smoke
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Compile-check
+        run: |
+          python -m py_compile app/main.py app/router.py app/tools.py app/rag.py app/llm.py ui.py
+      - name: Smoke import
+        run: |
+          python -c "from app.router import route_query; from app.tools import TOOL_REGISTRY; from app.rag import retrieve_docs; from app.llm import generate_answer; print('imports ok')"
